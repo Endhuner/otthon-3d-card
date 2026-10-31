@@ -1,11 +1,11 @@
-/* otthon-3d-card v0.1.2 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
-   Konfig (lásd README): levels[] (name, z, walls/floor/glass gyűrűk "x,y;x,y;…" méterben, deck), points[] (entity, level, x, y, name),
-   wall_h, slab_h, origin (pt, a koordináta-módhoz), height (CSS), default_level (index vagy 'all'). A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
+/* otthon-3d-card v0.2.0 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
+   Konfig (lásd README): levels[] (name, z, walls/floor/glass/furniture gyűrűk "x,y;x,y;…" méterben, deck), points[] (entity, level, x, y, name),
+   wall_h, slab_h, furniture_h, origin (pt, a koordináta-módhoz), height (CSS), default_level (index vagy 'all'). A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.1.2';
+const VERSION = '0.2.0';
 const PT_PER_M = 28.35;
-const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290 };
+const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290, furnTop: 0xd2b48c, furnSide: 0xb08d63 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const parseRing = s => (typeof s === 'string' ? s.split(';').map(p => p.split(',').map(Number)) : s);
 const area = r => r.reduce((a, [x, y], i) => { const [x2, y2] = r[(i + 1) % r.length]; return a + x * y2 - x2 * y; }, 0) / 2;
@@ -71,7 +71,8 @@ class Otthon3DCard extends HTMLElement {
     const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(6, 14, 9); this._scene.add(sun);
     const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
     this._mats = { wallTop: lam(COL.wallTop), wallSide: lam(COL.wallSide), slabTop: lam(COL.slabTop, { side: THREE.DoubleSide }), slabSide: lam(COL.slabSide), deck: lam(COL.deck), deckSide: lam(COL.deckSide),
-      glass: lam(COL.glass, { transparent: true, opacity: 0.45, depthWrite: false }), edge: new THREE.LineBasicMaterial({ color: COL.edge }) };
+      glass: lam(COL.glass, { transparent: true, opacity: 0.45, depthWrite: false }), edge: new THREE.LineBasicMaterial({ color: COL.edge }),
+      furnTop: lam(COL.furnTop), furnSide: lam(COL.furnSide) };
     this._ray = new THREE.Raycaster(); this._ptrs = new Map(); this._orbit = { theta: Math.PI / 4, phi: 0.95, r: 20, target: new THREE.Vector3() };
     this._ro = new ResizeObserver(() => this._resize()); this._ro.observe(this._wrap);
     this._bindPointer();
@@ -88,6 +89,8 @@ class Otthon3DCard extends HTMLElement {
       if (lvl.deck) { const d = extrude([lvl.deck], 0.08, m.deck, m.deckSide, -0.08); if (d) g.add(d); }
       const walls = extrude(lvl.walls, wallH, m.wallTop, m.wallSide);
       if (walls) { g.add(walls); const e = new THREE.LineSegments(new THREE.EdgesGeometry(walls.geometry, 25), m.edge); e.rotation.copy(walls.rotation); g.add(e); }
+      const furn = extrude(lvl.furniture, cfg.furniture_h ?? 0.55, m.furnTop, m.furnSide);
+      if (furn) { g.add(furn); const e = new THREE.LineSegments(new THREE.EdgesGeometry(furn.geometry, 25), m.edge); e.rotation.copy(furn.rotation); g.add(e); }
       const glass = extrude(lvl.glass, wallH * 0.95, m.glass, m.glass); if (glass) { glass.renderOrder = 2; g.add(glass); }
       this._scene.add(g); return g;
     });

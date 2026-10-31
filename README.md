@@ -20,6 +20,7 @@ type: custom:otthon-3d-card
 height: min(calc(100vh - 110px), 820px)   # CSS magasság (opcionális)
 wall_h: 1.1          # fal magassága méterben (babaház-vágás)
 slab_h: 0.25         # födém vastagsága
+furniture_h: 0.55    # bútor-tömbök magassága
 default_level: 1     # induláskor látható szint indexe, vagy 'all' (alapértelmezés: mind)
 origin: [487, 353]   # a koordináta-mód visszaszámolásához (terv-pt), opcionális
 levels:
@@ -29,6 +30,7 @@ levels:
     floor: [...]
     glass: [...]
     deck: "x,y;…"    # opcionális terasz
+    furniture: [...]  # opcionális bútor-körvonalak (alacsony tömbként rajzolja)
 points:
   - entity: sensor.nappali_homerseklet
     name: Nappali
