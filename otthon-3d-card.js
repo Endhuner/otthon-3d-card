@@ -1,9 +1,9 @@
-/* otthon-3d-card v0.1.1 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
+/* otthon-3d-card v0.1.2 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
    Konfig (lásd README): levels[] (name, z, walls/floor/glass gyűrűk "x,y;x,y;…" méterben, deck), points[] (entity, level, x, y, name),
    wall_h, slab_h, origin (pt, a koordináta-módhoz), height (CSS), default_level (index vagy 'all'). A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 const PT_PER_M = 28.35;
 const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -70,7 +70,7 @@ class Otthon3DCard extends HTMLElement {
     this._scene.add(new THREE.HemisphereLight(0xffffff, 0x99a3ad, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(6, 14, 9); this._scene.add(sun);
     const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
-    this._mats = { wallTop: lam(COL.wallTop), wallSide: lam(COL.wallSide), slabTop: lam(COL.slabTop), slabSide: lam(COL.slabSide), deck: lam(COL.deck), deckSide: lam(COL.deckSide),
+    this._mats = { wallTop: lam(COL.wallTop), wallSide: lam(COL.wallSide), slabTop: lam(COL.slabTop, { side: THREE.DoubleSide }), slabSide: lam(COL.slabSide), deck: lam(COL.deck), deckSide: lam(COL.deckSide),
       glass: lam(COL.glass, { transparent: true, opacity: 0.45, depthWrite: false }), edge: new THREE.LineBasicMaterial({ color: COL.edge }) };
     this._ray = new THREE.Raycaster(); this._ptrs = new Map(); this._orbit = { theta: Math.PI / 4, phi: 0.95, r: 20, target: new THREE.Vector3() };
     this._ro = new ResizeObserver(() => this._resize()); this._ro.observe(this._wrap);
@@ -163,9 +163,14 @@ class Otthon3DCard extends HTMLElement {
     const rect = this._canvas.getBoundingClientRect();
     this._ray.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / rect.width * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), this._camera);
     const floors = this._groups.filter(g => g.visible && g.userData.floor).map(g => g.userData.floor);
-    const hit = this._ray.intersectObjects(floors, false)[0]; if (!hit) return;
-    const [cx, cy] = this._config.origin || [0, 0], lvl = this._config.levels[hit.object.userData.level];
-    const xm = hit.point.x, ym = hit.point.z, xpt = Math.round(xm * PT_PER_M + cx), ypt = Math.round(ym * PT_PER_M + cy);
+    let hit = this._ray.intersectObjects(floors, false)[0], lvlIdx = hit && hit.object.userData.level, pt = hit && hit.point;
+    if (!hit) {                                            // a födémen kívül (terasz, beugró): a legfelső látható szint padlósíkja
+      lvlIdx = Math.max(...this._visible); const z = this._config.levels[lvlIdx].z || 0;
+      pt = this._ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -z), new THREE.Vector3());
+      if (!pt) return;
+    }
+    const [cx, cy] = this._config.origin || [0, 0], lvl = this._config.levels[lvlIdx];
+    const xm = pt.x, ym = pt.z, xpt = Math.round(xm * PT_PER_M + cx), ypt = Math.round(ym * PT_PER_M + cy);
     const txt = `${lvl.name}: x ${xpt}, y ${ypt}  (${xm.toFixed(2)} m, ${ym.toFixed(2)} m)`;
     this._say(txt); navigator.clipboard?.writeText(`"x": ${xpt}, "y": ${ypt}`).catch(() => {});
   }
