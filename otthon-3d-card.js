@@ -1,10 +1,11 @@
-/* otthon-3d-card v0.2.0 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
-   Konfig (lásd README): levels[] (name, z, walls/floor/glass/furniture gyűrűk "x,y;x,y;…" méterben, deck), points[] (entity, level, x, y, name),
-   wall_h, slab_h, furniture_h, origin (pt, a koordináta-módhoz), height (CSS), default_level (index vagy 'all'). A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
+/* otthon-3d-card v0.3.0 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
+   Konfig (lásd README): levels[] (name, z, walls/floor/glass/furniture gyűrűk "x,y;x,y;…" méterben, deck),
+   points[] (entity, level, x, y, name), wall_h, slab_h, furniture_h, height (CSS), default_level (index vagy 'all'), url_path.
+   Szerkesztő mód (admin): címkék húzása, új eszköz a padlóra koppintva, átnevezés/törlés, mentés a dashboard konfigjába (lovelace/config/save).
+   A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.2.0';
-const PT_PER_M = 28.35;
+const VERSION = '0.3.0';
 const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290, furnTop: 0xd2b48c, furnSide: 0xb08d63 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const parseRing = s => (typeof s === 'string' ? s.split(';').map(p => p.split(',').map(Number)) : s);
@@ -34,10 +35,10 @@ class Otthon3DCard extends HTMLElement {
   static getStubConfig() { return { levels: [], points: [] }; }
   setConfig(config) {
     if (!config || !Array.isArray(config.levels) || !config.levels.length) throw new Error('otthon-3d-card: a "levels" lista hiányzik');
-    this._config = config; this._points = config.points || [];
+    this._config = config; this._points = (config.points || []).map(p => ({ ...p }));
     if (this._built) this._rebuild();
   }
-  set hass(hass) { this._hass = hass; this._updateLabelText(); }
+  set hass(hass) { const first = !this._hass; this._hass = hass; this._updateLabelText(); if (first && this._editBtn) this._editBtn.style.display = hass.user?.is_admin ? '' : 'none'; }
   getCardSize() { return 12; }
   connectedCallback() { if (!this._built) this._build(); this._loop(); }
   disconnectedCallback() { cancelAnimationFrame(this._raf); this._raf = null; this._ro?.disconnect(); }
@@ -50,18 +51,33 @@ class Otthon3DCard extends HTMLElement {
       .wrap{position:relative;width:100%;height:${this._config.height || 'min(calc(100vh - 110px), 820px)'};overflow:hidden;border-radius:var(--ha-card-border-radius,12px);background:var(--card-background-color,#fff)}
       canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
       .labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-      .lbl{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;background:rgba(28,30,36,.84);color:#fff;font:600 12px/1.3 Roboto,sans-serif;padding:3px 9px;border-radius:12px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+      .lbl{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;background:rgba(28,30,36,.84);color:#fff;font:600 12px/1.3 Roboto,sans-serif;padding:3px 9px;border-radius:12px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35);user-select:none;-webkit-user-select:none}
       .lbl.unavail{opacity:.55}
+      .lbl .x{display:none;margin-left:7px;opacity:.85}
+      .labels.edit .lbl{cursor:move;touch-action:none;outline:1.5px dashed rgba(255,255,255,.75);outline-offset:1px}
+      .labels.edit .lbl .x{display:inline}
       .bar{position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
       .bar button{pointer-events:auto;font:500 12px Roboto,sans-serif;padding:5px 10px;border-radius:14px;border:0;background:rgba(255,255,255,.92);color:#222;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
       .bar button.on{background:var(--primary-color,#03a9f4);color:#fff}
+      .bar button.save{background:#2e7d32;color:#fff}
       .bar .sp{flex:1}
-      .toast{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(28,30,36,.92);color:#fff;padding:6px 12px;border-radius:10px;font:12px Roboto,sans-serif;display:none;white-space:nowrap}
+      .toast{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(28,30,36,.92);color:#fff;padding:6px 12px;border-radius:10px;font:12px Roboto,sans-serif;display:none;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
       .ver{position:absolute;right:8px;bottom:6px;font:10px Roboto,sans-serif;color:rgba(0,0,0,.35)}
+      .form{position:absolute;left:50%;top:52px;transform:translateX(-50%);background:var(--card-background-color,#fff);color:var(--primary-text-color,#222);border-radius:12px;padding:10px 12px;box-shadow:0 2px 10px rgba(0,0,0,.35);display:none;flex-direction:column;gap:6px;width:min(320px,90%);font:13px Roboto,sans-serif;z-index:3}
+      .form.open{display:flex}
+      .form input{font:13px Roboto,sans-serif;padding:6px 8px;border:1px solid #bbb;border-radius:8px;width:100%;box-sizing:border-box;background:#fff;color:#222}
+      .form .row{display:flex;gap:6px;justify-content:flex-end}
+      .form button{font:500 12px Roboto,sans-serif;padding:5px 10px;border-radius:14px;border:0;background:var(--primary-color,#03a9f4);color:#fff;cursor:pointer}
+      .form button.sec{background:#ddd;color:#222}
+      .form button.del{background:#c62828;margin-right:auto}
     </style>
-    <div class="wrap"><canvas></canvas><div class="labels"></div><div class="bar"></div><div class="toast"></div><div class="ver">otthon-3d ${VERSION}</div></div>`;
+    <div class="wrap"><canvas></canvas><div class="labels"></div><div class="bar"></div>
+      <div class="form"><div class="ttl"></div><input class="ent" list="ents" placeholder="entitás, pl. sensor.nappali_homerseklet" autocomplete="off"><datalist id="ents"></datalist>
+        <input class="nm" placeholder="címke neve (üresen: az entitás neve)"><div class="row"><button class="del">Törlés</button><button class="sec">Mégse</button><button class="ok">OK</button></div></div>
+      <div class="toast"></div><div class="ver">otthon-3d ${VERSION}</div></div>`;
     this._wrap = root.querySelector('.wrap'); this._canvas = root.querySelector('canvas');
     this._labels = root.querySelector('.labels'); this._bar = root.querySelector('.bar'); this._toast = root.querySelector('.toast');
+    this._form = root.querySelector('.form');
 
     this._renderer = new THREE.WebGLRenderer({ canvas: this._canvas, antialias: true, alpha: true });
     this._renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
@@ -75,7 +91,7 @@ class Otthon3DCard extends HTMLElement {
       furnTop: lam(COL.furnTop), furnSide: lam(COL.furnSide) };
     this._ray = new THREE.Raycaster(); this._ptrs = new Map(); this._orbit = { theta: Math.PI / 4, phi: 0.95, r: 20, target: new THREE.Vector3() };
     this._ro = new ResizeObserver(() => this._resize()); this._ro.observe(this._wrap);
-    this._bindPointer();
+    this._bindPointer(); this._bindForm();
     this._rebuild();
   }
 
@@ -94,21 +110,22 @@ class Otthon3DCard extends HTMLElement {
       const glass = extrude(lvl.glass, wallH * 0.95, m.glass, m.glass); if (glass) { glass.renderOrder = 2; g.add(glass); }
       this._scene.add(g); return g;
     });
-    this._labels.innerHTML = '';
-    this._labelEls = this._points.map(p => { const el = document.createElement('div'); el.className = 'lbl'; el.addEventListener('click', ev => { ev.stopPropagation(); this._moreInfo(p.entity); }); this._labels.appendChild(el); return el; });
-    this._buildBar();
+    this._buildBar(); this._makeLabels();
     const dl = cfg.default_level;
-    this._show(dl === 'all' || dl == null ? new Set(cfg.levels.map((_, i) => i)) : new Set([Math.min(Math.max(+dl, 0), cfg.levels.length - 1)]), true);
+    this._show(dl === 'all' || dl == null ? new Set(cfg.levels.map((_, i) => i)) : new Set([clamp(+dl, 0, cfg.levels.length - 1)]), true);
     this._updateLabelText();
   }
 
   _buildBar() {
     this._bar.innerHTML = '';
-    const btn = (txt, on) => { const b = document.createElement('button'); b.textContent = txt; b.addEventListener('click', on); this._bar.appendChild(b); return b; };
+    const btn = (txt, on, cls) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls; b.addEventListener('click', on); this._bar.appendChild(b); return b; };
     this._lvlBtns = this._config.levels.map((lvl, i) => btn(lvl.name || `Szint ${i + 1}`, () => this._show(new Set([i]))));
     this._allBtn = btn('Mind', () => this._show(new Set(this._config.levels.map((_, i) => i))));
     const sp = document.createElement('div'); sp.className = 'sp'; this._bar.appendChild(sp);
-    this._editBtn = btn('📍 Koordináta', () => { this._edit = !this._edit; this._editBtn.classList.toggle('on', this._edit); this._say(this._edit ? 'Koppints a padlóra: kiírja és vágólapra teszi az x,y-t' : ''); });
+    this._editBtn = btn('✎ Szerkesztés', () => this._setEditing(!this._editing));
+    this._editBtn.style.display = this._hass?.user?.is_admin ? '' : 'none';
+    this._saveBtn = btn('💾 Mentés', () => this._save(), 'save'); this._saveBtn.style.display = 'none';
+    this._cancelBtn = btn('Mégse', () => this._cancelEdit()); this._cancelBtn.style.display = 'none';
     btn('⟲ Nézet', () => this._fit(true));
   }
 
@@ -117,7 +134,7 @@ class Otthon3DCard extends HTMLElement {
     this._groups.forEach((g, i) => { g.visible = set.has(i); });
     this._lvlBtns.forEach((b, i) => b.classList.toggle('on', set.size === 1 && set.has(i)));
     this._allBtn.classList.toggle('on', set.size > 1);
-    this._fit(fitAll || set.size > 1 !== this._wasMulti); this._wasMulti = set.size > 1; this._dirty = true;
+    this._fit(fitAll || (set.size > 1) !== this._wasMulti); this._wasMulti = set.size > 1; this._dirty = true;
   }
 
   _fit(resetAngles) {
@@ -141,6 +158,7 @@ class Otthon3DCard extends HTMLElement {
     this._renderer.setSize(w, h, false); this._camera.aspect = w / h; this._camera.updateProjectionMatrix(); this._dirty = true;
   }
 
+  // ---------- kamera-vezérlés ----------
   _bindPointer() {
     const c = this._canvas, o = this._orbit;
     const dist = () => { const [a, b] = [...this._ptrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
@@ -156,40 +174,60 @@ class Otthon3DCard extends HTMLElement {
         this._updateCamera();
       } else if (this._ptrs.size === 2) { const d = dist(); if (d > 0 && this._pinch) o.r = clamp(o.r * this._pinch / d, 2, 150); this._pinch = d; this._updateCamera(); }
     });
-    const up = e => { const p = this._ptrs.get(e.pointerId); this._ptrs.delete(e.pointerId); if (p && !p.moved && this._edit && e.type === 'pointerup') this._pick(e); };
+    const up = e => { const p = this._ptrs.get(e.pointerId); this._ptrs.delete(e.pointerId); if (p && !p.moved && this._editing && e.type === 'pointerup') this._newPoint(e); };
     c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
     c.addEventListener('wheel', e => { o.r = clamp(o.r * (1 + Math.sign(e.deltaY) * 0.1), 2, 150); this._updateCamera(); e.preventDefault(); }, { passive: false });
     c.addEventListener('contextmenu', e => e.preventDefault());
   }
 
-  _pick(e) {
+  _planePoint(e, y) {                                        // a mutató sugara metszve a vízszintes síkkal (magasság y)
+    const rect = this._canvas.getBoundingClientRect();
+    this._ray.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / rect.width * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), this._camera);
+    return this._ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), new THREE.Vector3());
+  }
+
+  _floorPoint(e) {                                           // koppintás helye: födém-találat, különben a legfelső látható szint padlósíkja
     const rect = this._canvas.getBoundingClientRect();
     this._ray.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / rect.width * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), this._camera);
     const floors = this._groups.filter(g => g.visible && g.userData.floor).map(g => g.userData.floor);
-    let hit = this._ray.intersectObjects(floors, false)[0], lvlIdx = hit && hit.object.userData.level, pt = hit && hit.point;
-    if (!hit) {                                            // a födémen kívül (terasz, beugró): a legfelső látható szint padlósíkja
-      lvlIdx = Math.max(...this._visible); const z = this._config.levels[lvlIdx].z || 0;
-      pt = this._ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -z), new THREE.Vector3());
-      if (!pt) return;
-    }
-    const [cx, cy] = this._config.origin || [0, 0], lvl = this._config.levels[lvlIdx];
-    const xm = pt.x, ym = pt.z, xpt = Math.round(xm * PT_PER_M + cx), ypt = Math.round(ym * PT_PER_M + cy);
-    const txt = `${lvl.name}: x ${xpt}, y ${ypt}  (${xm.toFixed(2)} m, ${ym.toFixed(2)} m)`;
-    this._say(txt); navigator.clipboard?.writeText(`"x": ${xpt}, "y": ${ypt}`).catch(() => {});
+    const hit = this._ray.intersectObjects(floors, false)[0];
+    if (hit) return { level: hit.object.userData.level, x: hit.point.x, y: hit.point.z };
+    const level = Math.max(...this._visible), pt = this._planePoint(e, this._config.levels[level].z || 0);
+    return pt ? { level, x: pt.x, y: pt.z } : null;
   }
 
-  _say(txt) { this._toast.textContent = txt; this._toast.style.display = txt ? 'block' : 'none'; clearTimeout(this._tt); if (txt) this._tt = setTimeout(() => { this._toast.style.display = 'none'; }, 6000); }
-
-  _moreInfo(entityId) { this.dispatchEvent(new CustomEvent('hass-more-info', { bubbles: true, composed: true, detail: { entityId } })); }
+  // ---------- címkék ----------
+  _makeLabels() {
+    this._labels.innerHTML = '';
+    this._labelEls = this._points.map(p => {
+      const el = document.createElement('div'); el.className = 'lbl';
+      el.innerHTML = '<span class="t"></span><span class="x" title="Törlés">✕</span>';
+      el.querySelector('.x').addEventListener('pointerdown', ev => { ev.stopPropagation(); ev.preventDefault(); if (this._editing) this._removePoint(p); });
+      let drag = null;
+      el.addEventListener('pointerdown', ev => { if (!this._editing) return; ev.stopPropagation(); ev.preventDefault(); el.setPointerCapture(ev.pointerId); drag = { id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, moved: false }; });
+      el.addEventListener('pointermove', ev => {
+        if (!drag || ev.pointerId !== drag.id) return;
+        if (Math.abs(ev.clientX - drag.x0) + Math.abs(ev.clientY - drag.y0) > 3) drag.moved = true;
+        if (!drag.moved) return;
+        const lvl = this._config.levels[p.level], pt = this._planePoint(ev, (lvl.z || 0) + (this._config.wall_h ?? 1.1) + 0.25);
+        if (pt) { p.x = +pt.x.toFixed(2); p.y = +pt.z.toFixed(2); this._dirty = true; }
+      });
+      const end = ev => { if (!drag || ev.pointerId !== drag.id) return; const moved = drag.moved; drag = null; if (!moved) this._openForm(p, false); };
+      el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+      el.addEventListener('click', ev => { ev.stopPropagation(); if (!this._editing) this._moreInfo(p.entity); });
+      this._labels.appendChild(el); return el;
+    });
+    this._updateLabelText();
+  }
 
   _updateLabelText() {
     if (!this._hass || !this._labelEls) return;
     this._points.forEach((p, i) => {
-      const st = this._hass.states[p.entity], el = this._labelEls[i];
+      const st = this._hass.states[p.entity], el = this._labelEls[i]; if (!el) return;
       const name = p.name || st?.attributes?.friendly_name || p.entity;
       let val = '?';
       if (st) { try { val = this._hass.formatEntityState ? this._hass.formatEntityState(st) : st.state + (st.attributes.unit_of_measurement ? ' ' + st.attributes.unit_of_measurement : ''); } catch { val = st.state; } }
-      el.textContent = `${name} · ${val}`; el.classList.toggle('unavail', !st || st.state === 'unavailable');
+      el.querySelector('.t').textContent = `${name} · ${val}`; el.classList.toggle('unavail', !st || st.state === 'unavailable');
     });
     this._dirty = true;
   }
@@ -198,11 +236,70 @@ class Otthon3DCard extends HTMLElement {
     const w = this._wrap.clientWidth, h = this._wrap.clientHeight, v = new THREE.Vector3(), wallH = this._config.wall_h ?? 1.1;
     this._points.forEach((p, i) => {
       const el = this._labelEls[i], lvl = this._config.levels[p.level];
+      if (!el) return;
       if (!lvl || !this._visible.has(p.level)) { el.style.display = 'none'; return; }
       v.set(p.x, (lvl.z || 0) + wallH + 0.25, p.y).project(this._camera);
       if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) { el.style.display = 'none'; return; }
       el.style.display = ''; el.style.left = ((v.x + 1) / 2 * w) + 'px'; el.style.top = ((1 - v.y) / 2 * h) + 'px';
     });
+  }
+
+  _moreInfo(entityId) { this.dispatchEvent(new CustomEvent('hass-more-info', { bubbles: true, composed: true, detail: { entityId } })); }
+  _say(txt, ms = 6000) { this._toast.textContent = txt; this._toast.style.display = txt ? 'block' : 'none'; clearTimeout(this._tt); if (txt && ms) this._tt = setTimeout(() => { this._toast.style.display = 'none'; }, ms); }
+
+  // ---------- szerkesztő mód ----------
+  _setEditing(on) {
+    this._editing = on;
+    this._labels.classList.toggle('edit', on); this._editBtn.classList.toggle('on', on);
+    this._saveBtn.style.display = this._cancelBtn.style.display = on ? '' : 'none';
+    if (on) { this._snapshot = JSON.stringify(this._points); this._say('Húzd a címkéket · koppints a padlóra: új eszköz · koppints címkére: név, törlés', 0); }
+    else { this._form.classList.remove('open'); this._say(''); }
+  }
+  _cancelEdit() { this._points = JSON.parse(this._snapshot || '[]'); this._makeLabels(); this._setEditing(false); }
+  _removePoint(p) { this._points = this._points.filter(q => q !== p); this._makeLabels(); }
+  _newPoint(e) { const fp = this._floorPoint(e); if (fp) this._openForm({ entity: '', name: '', level: fp.level, x: +fp.x.toFixed(2), y: +fp.y.toFixed(2) }, true); }
+
+  _bindForm() {
+    const f = this._form, ent = f.querySelector('.ent'), nm = f.querySelector('.nm');
+    f.addEventListener('pointerdown', ev => ev.stopPropagation());
+    f.querySelector('.sec').addEventListener('click', () => f.classList.remove('open'));
+    f.querySelector('.del').addEventListener('click', () => { if (!this._formNew) this._removePoint(this._formPoint); f.classList.remove('open'); });
+    f.querySelector('.ok').addEventListener('click', () => {
+      const id = ent.value.trim(), p = this._formPoint;
+      if (!this._hass?.states[id]) { this._say('Nincs ilyen entitás: ' + (id || '(üres)')); return; }
+      p.entity = id; p.name = nm.value.trim();
+      if (!p.name) delete p.name;
+      if (this._formNew) this._points.push(p);
+      this._makeLabels(); f.classList.remove('open');
+    });
+    ent.addEventListener('keydown', ev => { if (ev.key === 'Enter') f.querySelector('.ok').click(); });
+    nm.addEventListener('keydown', ev => { if (ev.key === 'Enter') f.querySelector('.ok').click(); });
+  }
+
+  _openForm(p, isNew) {
+    const f = this._form; this._formPoint = p; this._formNew = isNew;
+    f.querySelector('.ttl').textContent = isNew ? `Új eszköz – ${this._config.levels[p.level].name}` : 'Címke szerkesztése';
+    f.querySelector('.del').style.display = isNew ? 'none' : '';
+    const dl = f.querySelector('datalist');
+    if (this._hass && dl.childElementCount !== Object.keys(this._hass.states).length) dl.innerHTML = Object.keys(this._hass.states).sort().map(id => `<option value="${id}">`).join('');
+    f.querySelector('.ent').value = p.entity || ''; f.querySelector('.nm').value = p.name || '';
+    f.classList.add('open'); f.querySelector(isNew ? '.ent' : '.nm').focus();
+  }
+
+  async _save() {
+    const hass = this._hass; if (!hass) return;
+    const seg = location.pathname.split('/')[1], urlPath = this._config.url_path || (seg && seg !== 'lovelace' ? seg : null);
+    try {
+      const conf = await hass.callWS({ type: 'lovelace/config', url_path: urlPath, force: false });
+      let found = false;
+      const visit = n => { if (!n || typeof n !== 'object' || found) return; if (Array.isArray(n)) return n.forEach(visit);
+        if (n.type === 'custom:otthon-3d-card') { n.points = this._points.map(p => ({ ...p })); found = true; return; }
+        ['views', 'cards', 'sections', 'card'].forEach(k => n[k] && visit(n[k])); };
+      visit(conf);
+      if (!found) { this._say('Nem találom a kártyát a dashboard konfigjában'); return; }
+      await hass.callWS({ type: 'lovelace/config/save', url_path: urlPath, config: conf });
+      this._setEditing(false); this._say(`Mentve ✓ (${this._points.length} eszköz)`);
+    } catch (e) { this._say('Mentés sikertelen: ' + (e.message || e.code || e)); }
   }
 
   _loop() {
@@ -214,5 +311,5 @@ class Otthon3DCard extends HTMLElement {
 
 customElements.define('otthon-3d-card', Otthon3DCard);
 window.customCards = window.customCards || [];
-window.customCards.push({ type: 'otthon-3d-card', name: 'Otthon 3D', description: 'Forgatható, nagyítható 3D alaprajz élő entitás-címkékkel.' });
+window.customCards.push({ type: 'otthon-3d-card', name: 'Otthon 3D', description: 'Forgatható, nagyítható 3D alaprajz élő entitás-címkékkel és szerkesztő móddal.' });
 console.info(`%c otthon-3d-card ${VERSION} `, 'background:#03a9f4;color:#fff;border-radius:4px');

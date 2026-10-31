@@ -4,8 +4,12 @@ Forgatható, nagyítható 3D alaprajz-kártya Home Assistanthoz, three.js alapon
 konfigjában utazik (a kártya generikus, nem tartalmaz személyes adatot); a címkék élő entitás-állapotot mutatnak,
 koppintásra a HA részletező ablakát nyitják.
 
-**Kezelés:** húzás = forgatás, görgő / csípés = nagyítás, jobb gomb vagy Shift+húzás = tolás, szint-gombok fent,
-„📍 Koordináta” mód: a padlóra koppintva kiírja (és vágólapra teszi) a pont alaprajzi koordinátáját.
+**Kezelés:** húzás = forgatás, görgő / csípés = nagyítás, jobb gomb vagy Shift+húzás = tolás, szint-gombok fent.
+
+**Szerkesztő mód (csak admin felhasználónak látszik, „✎ Szerkesztés”):** a címkéket húzással helyezed át; a padlóra
+koppintva új eszközt veszel fel (entitás-választó + címke neve); címkére koppintva átnevezed vagy törlöd (✕).
+„💾 Mentés” a pozíciókat közvetlenül a dashboard konfigjába írja (`lovelace/config/save`), „Mégse” visszavonja.
+A dashboard `url_path`-ját az oldal címéből veszi; ha máshol ágyazod be, add meg a `url_path` konfig-kulcsban.
 
 **Erőforrás** (Beállítások → Irányítópultok → Erőforrások, típus: JavaScript module):
 
@@ -22,6 +26,7 @@ wall_h: 1.1          # fal magassága méterben (babaház-vágás)
 slab_h: 0.25         # födém vastagsága
 furniture_h: 0.55    # bútor-tömbök magassága
 default_level: 1     # induláskor látható szint indexe, vagy 'all' (alapértelmezés: mind)
+url_path: dashboard-otthon   # opcionális, a mentéshez (alapértelmezés: az URL első szegmense)
 origin: [487, 353]   # a koordináta-mód visszaszámolásához (terv-pt), opcionális
 levels:
   - name: Földszint
