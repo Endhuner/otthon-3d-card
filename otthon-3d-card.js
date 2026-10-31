@@ -1,11 +1,11 @@
-/* otthon-3d-card v0.3.0 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
+/* otthon-3d-card v0.3.1 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
    Konfig (lásd README): levels[] (name, z, walls/floor/glass/furniture gyűrűk "x,y;x,y;…" méterben, deck),
    points[] (entity, level, x, y, name), wall_h, slab_h, furniture_h, height (CSS), default_level (index vagy 'all'), url_path.
    Szerkesztő mód (admin): címkék húzása, új eszköz a padlóra koppintva, átnevezés/törlés, mentés a dashboard konfigjába (lovelace/config/save).
    A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290, furnTop: 0xd2b48c, furnSide: 0xb08d63 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const parseRing = s => (typeof s === 'string' ? s.split(';').map(p => p.split(',').map(Number)) : s);
@@ -38,7 +38,11 @@ class Otthon3DCard extends HTMLElement {
     this._config = config; this._points = (config.points || []).map(p => ({ ...p }));
     if (this._built) this._rebuild();
   }
-  set hass(hass) { const first = !this._hass; this._hass = hass; this._updateLabelText(); if (first && this._editBtn) this._editBtn.style.display = hass.user?.is_admin ? '' : 'none'; }
+  set hass(hass) {
+    const first = !this._hass; this._hass = hass; this._updateLabelText();
+    if (first && this._editBtn) this._editBtn.style.display = hass.user?.is_admin ? '' : 'none';
+    if (first && this._built) { try { if (sessionStorage.getItem('otthon3d_saved')) { sessionStorage.removeItem('otthon3d_saved'); this._say(`Mentve ✓ (${this._points.length} eszköz)`); } } catch {} }   // a mentés után a HA újra létrehozza a kártyát
+  }
   getCardSize() { return 12; }
   connectedCallback() { if (!this._built) this._build(); this._loop(); }
   disconnectedCallback() { cancelAnimationFrame(this._raf); this._raf = null; this._ro?.disconnect(); }
@@ -298,6 +302,7 @@ class Otthon3DCard extends HTMLElement {
       visit(conf);
       if (!found) { this._say('Nem találom a kártyát a dashboard konfigjában'); return; }
       await hass.callWS({ type: 'lovelace/config/save', url_path: urlPath, config: conf });
+      try { sessionStorage.setItem('otthon3d_saved', '1'); } catch {}
       this._setEditing(false); this._say(`Mentve ✓ (${this._points.length} eszköz)`);
     } catch (e) { this._say('Mentés sikertelen: ' + (e.message || e.code || e)); }
   }
