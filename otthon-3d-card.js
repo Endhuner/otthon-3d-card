@@ -1,9 +1,9 @@
-/* otthon-3d-card v0.1.0 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
+/* otthon-3d-card v0.1.1 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
    Konfig (lásd README): levels[] (name, z, walls/floor/glass gyűrűk "x,y;x,y;…" méterben, deck), points[] (entity, level, x, y, name),
-   wall_h, slab_h, origin (pt, a koordináta-módhoz), height (CSS). A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
+   wall_h, slab_h, origin (pt, a koordináta-módhoz), height (CSS), default_level (index vagy 'all'). A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 const PT_PER_M = 28.35;
 const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -94,7 +94,8 @@ class Otthon3DCard extends HTMLElement {
     this._labels.innerHTML = '';
     this._labelEls = this._points.map(p => { const el = document.createElement('div'); el.className = 'lbl'; el.addEventListener('click', ev => { ev.stopPropagation(); this._moreInfo(p.entity); }); this._labels.appendChild(el); return el; });
     this._buildBar();
-    this._show(new Set(cfg.levels.map((_, i) => i)), true);
+    const dl = cfg.default_level;
+    this._show(dl === 'all' || dl == null ? new Set(cfg.levels.map((_, i) => i)) : new Set([Math.min(Math.max(+dl, 0), cfg.levels.length - 1)]), true);
     this._updateLabelText();
   }
 
@@ -113,7 +114,7 @@ class Otthon3DCard extends HTMLElement {
     this._groups.forEach((g, i) => { g.visible = set.has(i); });
     this._lvlBtns.forEach((b, i) => b.classList.toggle('on', set.size === 1 && set.has(i)));
     this._allBtn.classList.toggle('on', set.size > 1);
-    this._fit(fitAll); this._dirty = true;
+    this._fit(fitAll || set.size > 1 !== this._wasMulti); this._wasMulti = set.size > 1; this._dirty = true;
   }
 
   _fit(resetAngles) {
@@ -122,7 +123,7 @@ class Otthon3DCard extends HTMLElement {
     if (box.isEmpty()) return;
     const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
     const o = this._orbit; o.target.copy(c);
-    if (resetAngles) { o.theta = Math.PI / 4; o.phi = 0.95; o.r = Math.max(size.x, size.z, size.y * 1.5) * 1.35 + 2; }
+    if (resetAngles) { o.theta = Math.PI / 4; o.phi = this._visible.size > 1 ? 1.2 : 0.95; o.r = Math.max(size.x, size.z, size.y * 1.5) * 1.35 + 2; }
     this._updateCamera();
   }
 
