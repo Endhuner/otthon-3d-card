@@ -5,9 +5,10 @@
    A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.3.1';
+const VERSION = '0.3.2';
 const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290, furnTop: 0xd2b48c, furnSide: 0xb08d63 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const parseRing = s => (typeof s === 'string' ? s.split(';').map(p => p.split(',').map(Number)) : s);
 const area = r => r.reduce((a, [x, y], i) => { const [x2, y2] = r[(i + 1) % r.length]; return a + x * y2 - x2 * y; }, 0) / 2;
 const inside = ([px, py], r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c; } return c; };
@@ -128,6 +129,7 @@ class Otthon3DCard extends HTMLElement {
     const sp = document.createElement('div'); sp.className = 'sp'; this._bar.appendChild(sp);
     this._editBtn = btn('✎ Szerkesztés', () => this._setEditing(!this._editing));
     this._editBtn.style.display = this._hass?.user?.is_admin ? '' : 'none';
+    this._addBtn = btn('+ Eszköz', () => this._addAtCenter()); this._addBtn.style.display = 'none';
     this._saveBtn = btn('💾 Mentés', () => this._save(), 'save'); this._saveBtn.style.display = 'none';
     this._cancelBtn = btn('Mégse', () => this._cancelEdit()); this._cancelBtn.style.display = 'none';
     btn('⟲ Nézet', () => this._fit(true));
@@ -255,13 +257,20 @@ class Otthon3DCard extends HTMLElement {
   _setEditing(on) {
     this._editing = on;
     this._labels.classList.toggle('edit', on); this._editBtn.classList.toggle('on', on);
-    this._saveBtn.style.display = this._cancelBtn.style.display = on ? '' : 'none';
-    if (on) { this._snapshot = JSON.stringify(this._points); this._say('Húzd a címkéket · koppints a padlóra: új eszköz · koppints címkére: név, törlés', 0); }
+    this._saveBtn.style.display = this._cancelBtn.style.display = this._addBtn.style.display = on ? '' : 'none';
+    if (on) { this._snapshot = JSON.stringify(this._points); this._say('„+ Eszköz” vagy koppints a padlóra: új eszköz · húzd a címkéket · koppints címkére: név, törlés', 0); }
     else { this._form.classList.remove('open'); this._say(''); }
   }
   _cancelEdit() { this._points = JSON.parse(this._snapshot || '[]'); this._makeLabels(); this._setEditing(false); }
   _removePoint(p) { this._points = this._points.filter(q => q !== p); this._makeLabels(); }
   _newPoint(e) { const fp = this._floorPoint(e); if (fp) this._openForm({ entity: '', name: '', level: fp.level, x: +fp.x.toFixed(2), y: +fp.y.toFixed(2) }, true); }
+  _addAtCenter() {                                           // „+ Eszköz”: a legfelső látható szint padlójának közepére, utána húzható
+    const level = Math.max(...this._visible), lvl = this._config.levels[level];
+    const pts = (lvl.floor || []).flatMap(r => parseRing(r));
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const x = pts.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0, y = pts.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0;
+    this._openForm({ entity: '', name: '', level, x: +x.toFixed(2), y: +y.toFixed(2) }, true);
+  }
 
   _bindForm() {
     const f = this._form, ent = f.querySelector('.ent'), nm = f.querySelector('.nm');
@@ -285,7 +294,7 @@ class Otthon3DCard extends HTMLElement {
     f.querySelector('.ttl').textContent = isNew ? `Új eszköz – ${this._config.levels[p.level].name}` : 'Címke szerkesztése';
     f.querySelector('.del').style.display = isNew ? 'none' : '';
     const dl = f.querySelector('datalist');
-    if (this._hass && dl.childElementCount !== Object.keys(this._hass.states).length) dl.innerHTML = Object.keys(this._hass.states).sort().map(id => `<option value="${id}">`).join('');
+    if (this._hass && dl.childElementCount !== Object.keys(this._hass.states).length) dl.innerHTML = Object.keys(this._hass.states).sort().map(id => `<option value="${id}">${esc(this._hass.states[id].attributes?.friendly_name || '')}</option>`).join('');
     f.querySelector('.ent').value = p.entity || ''; f.querySelector('.nm').value = p.name || '';
     f.classList.add('open'); f.querySelector(isNew ? '.ent' : '.nm').focus();
   }

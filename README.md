@@ -6,8 +6,9 @@ koppintásra a HA részletező ablakát nyitják.
 
 **Kezelés:** húzás = forgatás, görgő / csípés = nagyítás, jobb gomb vagy Shift+húzás = tolás, szint-gombok fent.
 
-**Szerkesztő mód (csak admin felhasználónak látszik, „✎ Szerkesztés”):** a címkéket húzással helyezed át; a padlóra
-koppintva új eszközt veszel fel (entitás-választó + címke neve); címkére koppintva átnevezed vagy törlöd (✕).
+**Szerkesztő mód (csak admin felhasználónak látszik, „✎ Szerkesztés”):** a címkéket húzással helyezed át; a „+ Eszköz”
+gomb a látható szint közepére tesz egy új eszközt (entitás-választó HA-beli nevekkel + címke neve), vagy a padlóra koppintva
+oda, ahová koppintottál; címkére koppintva átnevezed vagy törlöd (✕).
 „💾 Mentés” a pozíciókat közvetlenül a dashboard konfigjába írja (`lovelace/config/save`), „Mégse” visszavonja.
 A dashboard `url_path`-ját az oldal címéből veszi; ha máshol ágyazod be, add meg a `url_path` konfig-kulcsban.
 
