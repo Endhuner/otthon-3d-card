@@ -22,7 +22,7 @@ https://cdn.jsdelivr.net/gh/Endhuner/otthon-3d-card@main/otthon-3d-card.js
 
 ```yaml
 type: custom:otthon-3d-card
-height: min(calc(100vh - 110px), 820px)   # CSS magasság (opcionális)
+height: calc(100vh - 110px)   # CSS magasság (opcionális, ez az alap)
 wall_h: 1.1          # fal magassága méterben (babaház-vágás)
 slab_h: 0.25         # födém vastagsága
 furniture_h: 0.55    # bútor-tömbök magassága
@@ -46,3 +46,5 @@ points:
 ```
 
 A gyűrűket egy alaprajzból generáló Python-szkript (PDF-sraffozásból) a szerző privát repójában van; a formátum fent.
+
+A kamera a látható szintek befoglaló dobozát a gombsor alatti sávba illeszti (képarány-követő, 95%-os kitöltés); „⬇ Felülnézet” felülről, észak felfelé, „⟲ Nézet” az alap szögből mutatja; szintváltáskor az utoljára választott nézettípus marad.

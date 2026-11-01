@@ -6,7 +6,7 @@
    A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.3.3';
+const VERSION = '0.3.4';
 const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290, furnTop: 0xd2b48c, furnSide: 0xb08d63 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -54,7 +54,7 @@ class Otthon3DCard extends HTMLElement {
     const root = this.attachShadow({ mode: 'open' });
     root.innerHTML = `<style>
       :host{display:block}
-      .wrap{position:relative;width:100%;height:${this._config.height || 'min(calc(100vh - 110px), 820px)'};overflow:hidden;border-radius:var(--ha-card-border-radius,12px);background:var(--card-background-color,#fff)}
+      .wrap{position:relative;width:100%;height:${this._config.height || 'calc(100vh - 110px)'};overflow:hidden;border-radius:var(--ha-card-border-radius,12px);background:var(--card-background-color,#fff)}
       canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
       .labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
       .lbl{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;background:rgba(28,30,36,.84);color:#fff;font:600 12px/1.3 Roboto,sans-serif;padding:3px 9px;border-radius:12px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35);user-select:none;-webkit-user-select:none}
@@ -135,6 +135,7 @@ class Otthon3DCard extends HTMLElement {
     this._addBtn = btn('+ Eszköz', () => this._addAtCenter()); this._addBtn.style.display = 'none';
     this._saveBtn = btn('💾 Mentés', () => this._save(), 'save'); this._saveBtn.style.display = 'none';
     this._cancelBtn = btn('Mégse', () => this._cancelEdit()); this._cancelBtn.style.display = 'none';
+    btn('⬇ Felülnézet', () => this._fit('top'));
     btn('⟲ Nézet', () => this._fit(true));
   }
 
@@ -143,17 +144,38 @@ class Otthon3DCard extends HTMLElement {
     this._groups.forEach((g, i) => { g.visible = set.has(i); });
     this._lvlBtns.forEach((b, i) => b.classList.toggle('on', set.size === 1 && set.has(i)));
     this._allBtn.classList.toggle('on', set.size > 1);
-    this._fit(fitAll || (set.size > 1) !== this._wasMulti); this._wasMulti = set.size > 1; this._dirty = true;
+    this._fit((fitAll || (set.size > 1) !== this._wasMulti) ? (this._lastView || true) : false); this._wasMulti = set.size > 1; this._dirty = true;
   }
 
-  _fit(resetAngles) {
+  _fit(view) {                                             // view: true = alap szög, 'top' = felülnézet, false = csak a célpont frissül
     const box = new THREE.Box3();
     this._groups.forEach(g => { if (g.visible) box.expandByObject(g); });
     if (box.isEmpty()) return;
-    const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
-    const o = this._orbit; o.target.copy(c);
-    if (resetAngles) { o.theta = Math.PI / 4; o.phi = this._visible.size > 1 ? 1.2 : 0.95; o.r = Math.max(size.x, size.z, size.y * 1.5) * 1.35 + 2; }
+    const o = this._orbit; o.target.copy(box.getCenter(new THREE.Vector3()));
+    if (view) {
+      this._lastView = view;
+      if (view === 'top') { o.theta = 0; o.phi = 0.04; } else { o.theta = Math.PI / 4; o.phi = this._visible.size > 1 ? 1.2 : 0.95; }
+      this._fitDistance(box);
+    }
     this._updateCamera();
+  }
+  // Kamera-távolság: a befoglaló doboz 8 sarkát vetíti, és r-t úgy állítja, hogy a modell a gombsor alatti, verziósor feletti
+  // sávot 95%-ig kitöltse a szűkebb irányban; a célpontot a kamera „fel” irányában eltolja, hogy a modell e sáv közepére kerüljön.
+  _fitDistance(box) {
+    const o = this._orbit, cam = this._camera, w = this._wrap.clientWidth, h = this._wrap.clientHeight;
+    if (!w || !h) { this._fitPending = this._lastView; o.r = box.getSize(new THREE.Vector3()).length() * 1.2 + 2; return; }
+    const top = 1 - 2 * ((this._bar?.offsetHeight || 40) + 14) / h, bottom = -1 + 2 * 24 / h, mid = (top + bottom) / 2;
+    const corners = [];
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));
+    o.r = Math.max(box.getSize(new THREE.Vector3()).length(), 1);
+    for (let i = 0; i < 5; i++) {
+      this._updateCamera(); cam.updateMatrixWorld();
+      let sx = 0, minY = Infinity, maxY = -Infinity;
+      for (const p of corners) { const v = p.clone().project(cam); sx = Math.max(sx, Math.abs(v.x)); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y); }
+      o.r *= Math.max(sx, (maxY - minY) / (top - bottom)) / 0.95;
+      const up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);              // a vetített középpont → a sáv közepére
+      o.target.addScaledVector(up, ((minY + maxY) / 2 - mid) * o.r * Math.tan(cam.fov * Math.PI / 360));
+    }
   }
 
   _updateCamera() {
@@ -164,6 +186,7 @@ class Otthon3DCard extends HTMLElement {
 
   _resize() {
     const w = this._wrap.clientWidth, h = this._wrap.clientHeight; if (!w || !h) return;
+    if (this._fitPending) { const v = this._fitPending; this._fitPending = null; this._fit(v); }   // az első illesztés még 0 méretnél történt
     this._renderer.setSize(w, h, false); this._camera.aspect = w / h; this._camera.updateProjectionMatrix(); this._dirty = true;
   }
 
