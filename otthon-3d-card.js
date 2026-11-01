@@ -1,12 +1,13 @@
 /* otthon-3d-card v0.3.1 — forgatható 3D alaprajz-kártya Home Assistanthoz (three.js).
    Konfig (lásd README): levels[] (name, z, walls/floor/glass/furniture gyűrűk "x,y;x,y;…" méterben, deck),
    points[] (entity, level, x, y, name), wall_h, slab_h, furniture_h, height (CSS), default_level (index vagy 'all'), url_path,
-   climates { <címke entitás>: [climate.…] } (a címke 🔥/❄ jelzést és keretet kap, ha a termosztát fűt/hűt), heat_color, cool_color.
+   climates { <entitás>: [climate.…] } (a címke 🔥/❄ jelzést és keretet kap, ha a termosztát fűt/hűt; a kulcs lehet maga a címke entitása,
+   vagy egy csoport/átlag-segéd, amelynek entity_id attribútumában a címke entitása szerepel), heat_color, cool_color.
    Szerkesztő mód (admin): címkék húzása, új eszköz a padlóra koppintva, átnevezés/törlés, mentés a dashboard konfigjába (lovelace/config/save).
    A ház geometriája a dashboard konfigjában marad, ez a fájl generikus. */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const VERSION = '0.3.4';
+const VERSION = '0.3.5';
 const COL = { wallTop: 0xf5f5f7, wallSide: 0xb9bec7, slabTop: 0xe9e3d7, slabSide: 0xcfc7b8, deck: 0xd8b78c, deckSide: 0xb8956a, glass: 0x8fc4e8, edge: 0x7b8290, furnTop: 0xd2b48c, furnSide: 0xb08d63 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -260,7 +261,9 @@ class Otthon3DCard extends HTMLElement {
       let val = '?';
       if (st) { try { val = this._hass.formatEntityState ? this._hass.formatEntityState(st) : st.state + (st.attributes.unit_of_measurement ? ' ' + st.attributes.unit_of_measurement : ''); } catch { val = st.state; } }
       el.querySelector('.t').textContent = `${name} · ${val}`; el.classList.toggle('unavail', !st || st.state === 'unavailable');
-      const cl = this._config.climates?.[p.entity], acts = (Array.isArray(cl) ? cl : cl ? [cl] : []).map(id => this._hass.states[id]?.attributes?.hvac_action);
+      const cm = this._config.climates || {};                // közvetlen kulcs, vagy az a csoport/átlag-segéd, amelyiknek tagja a címke entitása
+      const cl = cm[p.entity] ?? cm[Object.keys(cm).find(k => (this._hass.states[k]?.attributes?.entity_id || []).includes(p.entity))];
+      const acts = (Array.isArray(cl) ? cl : cl ? [cl] : []).map(id => this._hass.states[id]?.attributes?.hvac_action);
       el.classList.toggle('heat', acts.includes('heating')); el.classList.toggle('cool', acts.includes('cooling'));   // a szoba termosztátja éppen fűt / hűt
     });
     this._labels.style.setProperty('--heat', this._config.heat_color || '#ffc107'); this._labels.style.setProperty('--cool', this._config.cool_color || '#2196f3');

@@ -18,7 +18,7 @@ A dashboard `url_path`-ját az oldal címéből veszi; ha máshol ágyazod be, a
 https://cdn.jsdelivr.net/gh/Endhuner/otthon-3d-card@main/otthon-3d-card.js
 ```
 
-**Kártya-konfig:** (a `climates` térkép opcionális: a címke 🔥 ikont és sárga keretet kap, ha a felsorolt termosztátok közül valamelyik éppen fűt, ❄-t és kéket, ha hűt; `heat_color` / `cool_color` a színek)
+**Kártya-konfig:** (a `climates` térkép opcionális: a címke 🔥 ikont és sárga keretet kap, ha a felsorolt termosztátok közül valamelyik éppen fűt, ❄-t és kéket, ha hűt; a kulcs lehet a címke entitása, vagy egy csoport / átlag-segéd, amelynek `entity_id` attribútumában a címke entitása szerepel — így a jelzés követi, melyik hőmérő melyik szobához tartozik; `heat_color` / `cool_color` a színek)
 
 ```yaml
 type: custom:otthon-3d-card
